@@ -1,25 +1,13 @@
 const mongoose = require('mongoose');
 
-const timeSlotSchema = new mongoose.Schema({
-  start: { type: Date, required: true },
-  end: { type: Date, required: true },
-  availableUserIds: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-    }
-  ],
+const timingSchema = new mongoose.Schema({
+  start: { type: Date },
+  end: { type: Date }
 }, { _id: false });
 
-const finalizedSlotSchema = new mongoose.Schema({
-  start: { type: Date, required: true },
-  end: { type: Date, required: true },
-  confirmedParticipants: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-    }
-  ],
+const inviteeResponseSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  timings: [timingSchema],
 }, { _id: false });
 
 const meetingSchema = new mongoose.Schema({
@@ -37,7 +25,7 @@ const meetingSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  participants: [
+  invitees: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -56,12 +44,34 @@ const meetingSchema = new mongoose.Schema({
     enum: ['pending', 'awaiting_selection', 'finalized', 'expired'],
     default: 'pending'
   },
-  suggestedSlots: [timeSlotSchema],
-  finalizedSlot: finalizedSlotSchema,
+  suggestedSlots: [
+    {
+      start: { type: Date },
+      end: { type: Date },
+      availableUserIds: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+        }
+      ],
+    }
+  ],
+  finalizedSlot: {
+    start: { type: Date },
+    end: { type: Date },
+    confirmedParticipants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
+  },
   meetLink: {
     type: String,
     default: null
   },
+  inviteeResponses: [inviteeResponseSchema],
+  createdAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 meetingSchema.pre('save', function(next) {

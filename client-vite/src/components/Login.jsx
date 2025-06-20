@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-const Login = () => {
+const Login = ({ onLogin }) => {
   const [form, setForm] = useState({ email: "", password: "" });
   const navigate = useNavigate();
 
@@ -23,6 +23,9 @@ const Login = () => {
       const data = await res.json();
       if (res.ok) {
         toast.success("Login successful! Redirecting to dashboard...");
+        if (onLogin) {
+          onLogin({ name: data.user.name, email: data.user.email, _id: data.user._id, token: data.token });
+        }
         setTimeout(() => navigate("/dashboard"), 1500);
       } else {
         toast.error(data.message || "Login failed");
