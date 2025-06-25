@@ -195,7 +195,7 @@ router.get('/connections', authMiddleware, async (req, res) => {
 // Schedule a meeting
 router.post('/schedule-meeting', authMiddleware, async (req, res) => {
   try {
-    const { friendIds, duration, title } = req.body;
+    const { friendIds, duration, title, meetingDate, windowStart, windowEnd } = req.body;
     if (!friendIds || !Array.isArray(friendIds) || friendIds.length === 0) {
       return res.status(400).json({ message: 'No friends selected' });
     }
@@ -206,6 +206,9 @@ router.post('/schedule-meeting', authMiddleware, async (req, res) => {
       host: req.user.id,
       invitees: friendIds,
       duration,
+      meetingDate,
+      windowStart,
+      windowEnd,
       deadlineToRespond: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
       inviteeResponses: [],
       status: 'pending',

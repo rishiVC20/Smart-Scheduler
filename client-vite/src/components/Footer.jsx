@@ -21,9 +21,6 @@ function Footer() {
             <h3 className="text-xl font-bold mb-4 text-green-400">Developed By</h3>
             <div className="space-y-2">
               <p className="text-gray-300">Rishikesh Chaudhari</p>
-              {/* <p className="text-gray-300">Muhammad Usman</p>
-              <p className="text-gray-300">Muhammad Hamza</p>
-              <p className="text-gray-300">Muhammad Ali</p> */}
             </div>
           </div>
 

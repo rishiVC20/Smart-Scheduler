@@ -15,7 +15,9 @@ const PORT = process.env.PORT || 5000;
 const TOKEN_PATH = path.join(__dirname, 'token.json');
 
 app.use(cors({
-  origin: "https://smart-scheduler1.netlify.app",
+  
+  origin: ["https://smart-scheduler1.netlify.app",
+    "http://localhost:5173"],
   credentials: true,
   exposedHeaders: ['Authorization']
 }));

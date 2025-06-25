@@ -278,30 +278,79 @@ const MeetsPage = ({ user }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Submit Your Availability</h3>
+            {/* Constraints and Info */}
+            <div className="mb-4 p-3 bg-blue-50 border-l-4 border-blue-400 rounded">
+              <div className="text-sm text-gray-700">
+                Allowed window: <span className="font-semibold">{selectedMeetingForTiming.windowStart} - {selectedMeetingForTiming.windowEnd}</span>
+              </div>
+              <div className="text-sm text-gray-700">
+                Required duration: <span className="font-semibold">{selectedMeetingForTiming.duration} minutes</span>
+              </div>
+            </div>
             <div className="space-y-4 mb-6">
-              {multipleTimings.map((timing, index) => (
-                <div key={index} className="flex items-end gap-3 p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                    <input type="datetime-local" className="w-full px-3 py-2 border rounded-md" value={timing.start} onChange={e => updateTimingSlot(index, 'start', e.target.value)} />
+              {multipleTimings.map((timing, index) => {
+                // Build dropdown options for allowed window
+                const [startHour, startMinute] = selectedMeetingForTiming.windowStart.split(":").map(Number);
+                const [endHour, endMinute] = selectedMeetingForTiming.windowEnd.split(":").map(Number);
+                const windowStartMinutes = startHour * 60 + startMinute;
+                const windowEndMinutes = endHour * 60 + endMinute;
+                const options = [];
+                for (let m = windowStartMinutes; m <= windowEndMinutes; m++) {
+                  const h = String(Math.floor(m / 60)).padStart(2, '0');
+                  const min = String(m % 60).padStart(2, '0');
+                  options.push(`${h}:${min}`);
+                }
+                // Validation
+                let error = '';
+                const start = timing.start;
+                const end = timing.end;
+                const duration = selectedMeetingForTiming.duration;
+                if (start && end) {
+                  const startMins = start.split(":").reduce((a, b, i) => a + Number(b) * (i === 0 ? 60 : 1), 0);
+                  const endMins = end.split(":").reduce((a, b, i) => a + Number(b) * (i === 0 ? 60 : 1), 0);
+                  if (endMins <= startMins) error = 'End time must be after start time.';
+                  else if (endMins - startMins < duration) error = `Slot must be at least ${duration} minutes.`;
+                }
+                return (
+                  <div key={index} className="flex flex-col gap-2 p-3 border rounded-lg bg-gray-50">
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                        <select className="w-full px-3 py-2 border rounded-md" value={timing.start || ''} onChange={e => updateTimingSlot(index, 'start', e.target.value)}>
+                          <option value="">Select start time</option>
+                          {options.slice(0, -1).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                        <select className="w-full px-3 py-2 border rounded-md" value={timing.end || ''} onChange={e => updateTimingSlot(index, 'end', e.target.value)}>
+                          <option value="">Select end time</option>
+                          {options.slice(1).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button onClick={() => removeTimingSlot(index)} className="px-3 py-2 text-red-600 hover:text-red-800">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                    {error && <div className="text-red-600 text-xs mt-1">{error}</div>}
                   </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                    <input type="datetime-local" className="w-full px-3 py-2 border rounded-md" value={timing.end} onChange={e => updateTimingSlot(index, 'end', e.target.value)} />
-                  </div>
-                  <button onClick={() => removeTimingSlot(index)} className="px-3 py-2 text-red-600 hover:text-red-800">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               <button onClick={addTimingSlot} className="w-full py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400">
                 + Add Another Time Slot
               </button>
             </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowTimingPopup(false)} className="flex-1 px-4 py-2 border rounded-md">Cancel</button>
-              <button onClick={submitMultipleTimings} disabled={submitting[selectedMeetingForTiming?._id]} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            <div className="flex flex-col gap-2 mb-4">
+              <button onClick={() => setShowTimingPopup(false)} className="px-4 py-2 border rounded-md">Cancel</button>
+              <button onClick={submitMultipleTimings} disabled={submitting[selectedMeetingForTiming?._id]} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
                 {submitting[selectedMeetingForTiming?._id] ? 'Submitting...' : 'Submit Timings'}
+              </button>
+              <button onClick={() => {/* handle not available logic */ setShowTimingPopup(false); }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 mt-2">
+                Not Available for this Meeting
               </button>
             </div>
           </div>

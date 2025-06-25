@@ -25,6 +25,13 @@ const Dashboard = ({ user }) => {
   const [meetingsLoading, setMeetingsLoading] = useState(false);
   const [attendeeModal, setAttendeeModal] = useState({ open: false, attendees: [], title: "", invitees: [] });
   const [openSection, setOpenSection] = useState("upcoming"); // Only one open at a time
+  const [meetingDate, setMeetingDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  const [windowStart, setWindowStart] = useState('09:00');
+  const [windowEnd, setWindowEnd] = useState('18:00');
+  const [formError, setFormError] = useState('');
 
   // Fetch connections (friends, requests)
   const fetchConnections = async () => {
@@ -107,25 +114,45 @@ const Dashboard = ({ user }) => {
     );
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, meetingDetails) => {
     e.preventDefault();
-    if (selectedFriends.length === 0 || !title) return;
-    await fetch(`${API}/schedule-meeting`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-      body: JSON.stringify({ friendIds: selectedFriends, duration, title }),
-    });
-    setSuccessMsg("Meeting scheduled and friends notified!");
-    setTimeout(() => {
-      setSuccessMsg("");
-      setShowModal(false);
-      setSelectedFriends([]);
-      setDuration(30);
-      setTitle("");
-    }, 1500);
+    setFormError('');
+    if (!title) {
+      setFormError('Please enter a meeting title.');
+      return;
+    }
+    if (!meetingDate || !windowStart || !windowEnd) {
+      setFormError('Please fill all fields.');
+      return;
+    }
+    const startDateTime = new Date(`${meetingDate}T${windowStart}`);
+    const endDateTime = new Date(`${meetingDate}T${windowEnd}`);
+    if (endDateTime <= startDateTime) {
+      setFormError('End time must be after start time.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/schedule-meeting`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ ...meetingDetails, friendIds: selectedFriends, duration }),
+      });
+      if (!res.ok) throw new Error("Meeting scheduling failed");
+      const data = await res.json();
+      setSuccessMsg("Meeting scheduled and friends notified!");
+      setTimeout(() => {
+        setSuccessMsg("");
+        setShowModal(false);
+        setSelectedFriends([]);
+        setDuration(30);
+        setTitle("");
+      }, 1500);
+    } catch (err) {
+      setFormError("Error scheduling meeting");
+    }
   };
 
   useEffect(() => {
@@ -280,7 +307,10 @@ const Dashboard = ({ user }) => {
       {/* Modal for scheduling meeting */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 sm:mx-auto p-8 relative animate-fade-in flex flex-col">
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 sm:mx-auto p-8 relative animate-fade-in flex flex-col"
+            style={{ maxHeight: '90vh', overflowY: 'auto' }}
+          >
             <button
               className="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-2xl font-bold focus:outline-none"
               onClick={() => setShowModal(false)}
@@ -289,16 +319,70 @@ const Dashboard = ({ user }) => {
             >
               &times;
             </button>
-            <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+            <form onSubmit={e => {
+              e.preventDefault();
+              setFormError('');
+              if (!title) {
+                setFormError('Please enter a meeting title.');
+                return;
+              }
+              if (!meetingDate || !windowStart || !windowEnd) {
+                setFormError('Please fill all fields.');
+                return;
+              }
+              const startDateTime = new Date(`${meetingDate}T${windowStart}`);
+              const endDateTime = new Date(`${meetingDate}T${windowEnd}`);
+              if (endDateTime <= startDateTime) {
+                setFormError('End time must be after start time.');
+                return;
+              }
+              handleSubmit(e, { title, meetingDate, windowStart, windowEnd, duration });
+            }} className="space-y-6 mt-4">
               <h2 className="text-2xl font-bold mb-2 text-blue-700">Schedule a Meeting</h2>
-              <input
-                type="text"
-                className="w-full px-4 py-3 border rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-green-200 text-lg"
-                placeholder="Enter meeting title..."
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                required
-              />
+              <div>
+                <label className="block mb-1 font-medium text-base">Meeting Title</label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-3 border rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-green-200 text-lg"
+                  placeholder="Enter meeting title..."
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-medium text-base">Date</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={meetingDate}
+                  onChange={e => setMeetingDate(e.target.value)}
+                  className="w-48 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200 text-base"
+                  required
+                />
+              </div>
+              <div className="flex gap-4">
+                <div>
+                  <label className="block mb-1 font-medium text-base">Start Time</label>
+                  <input
+                    type="time"
+                    value={windowStart}
+                    onChange={e => setWindowStart(e.target.value)}
+                    className="w-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200 text-base"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-medium text-base">End Time</label>
+                  <input
+                    type="time"
+                    value={windowEnd}
+                    onChange={e => setWindowEnd(e.target.value)}
+                    className="w-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-200 text-base"
+                    required
+                  />
+                </div>
+              </div>
               <div>
                 <h2 className="text-lg font-bold mb-2 text-blue-700">Select Friends</h2>
                 <div className="mb-2 max-h-40 overflow-y-auto flex flex-col gap-2">
@@ -339,6 +423,7 @@ const Dashboard = ({ user }) => {
                 Send Meeting Invite
               </button>
               {successMsg && <div className="mt-2 text-green-600 font-semibold text-center">{successMsg}</div>}
+              {formError && <div className="text-red-600 text-sm font-medium">{formError}</div>}
             </form>
           </div>
         </div>

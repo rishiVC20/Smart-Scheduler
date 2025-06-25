@@ -35,6 +35,18 @@ const meetingSchema = new mongoose.Schema({
     type: Number, // Duration in minutes
     required: true
   },
+  meetingDate: {
+    type: String,
+    required: true
+  },
+  windowStart: {
+    type: String,
+    required: true
+  },
+  windowEnd: {
+    type: String,
+    required: true
+  },
   deadlineToRespond: {
     type: Date,
     required: true
