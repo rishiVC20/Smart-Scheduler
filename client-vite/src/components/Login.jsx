@@ -7,6 +7,7 @@ import heroImg from "../assets/hero-user-coding.jpg";
 const Login = ({ onLogin }) => {
   const [form, setForm] = useState({ email: "", password: "" });
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -15,8 +16,7 @@ const Login = ({ onLogin }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Replace with your backend API endpoint
-      const res = await fetch("/api/login", {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

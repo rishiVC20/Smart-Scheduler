@@ -79,7 +79,7 @@ function ProtectedRoute({ user, children }) {
   return children;
 }
 
-const API = "/api";
+const API = import.meta.env.VITE_API_URL;
 
 function AppContent() {
   const [user, setUser] = useState(() => {

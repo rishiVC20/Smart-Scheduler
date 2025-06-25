@@ -8,6 +8,8 @@ const SearchFriendsPage = () => {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    const API_URL = import.meta.env.VITE_API_URL;
+
     const performSearch = async (query) => {
         if (!query) {
             setResults([]);
@@ -16,7 +18,7 @@ const SearchFriendsPage = () => {
         setLoading(true);
         try {
             const token = getToken();
-            const res = await fetch(`/api/search-users?email=${query}`, {
+            const res = await fetch(`${API_URL}/search-users?email=${query}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await res.json();
@@ -41,7 +43,7 @@ const SearchFriendsPage = () => {
 
     const handleSendRequest = async (toUserId) => {
         try {
-            await fetch('/api/send-request', {
+            await fetch(`${API_URL}/send-request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
                 body: JSON.stringify({ toUserId }),

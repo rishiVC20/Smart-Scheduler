@@ -34,6 +34,8 @@ const getTimeSlots = () => {
   return slots;
 };
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const Calendar = ({ user }) => {
   const [view, setView] = useState('month'); // 'month' or 'day'
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -66,7 +68,7 @@ const Calendar = ({ user }) => {
         return;
       }
 
-      const response = await fetch('/api/meetings', {
+      const response = await fetch(`${API_URL}/meetings`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

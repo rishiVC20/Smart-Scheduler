@@ -7,6 +7,7 @@ import heroImg from "../assets/hero-user-coding.jpg";
 const Register = ({ onRegister }) => {
   const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL;
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -19,8 +20,7 @@ const Register = ({ onRegister }) => {
       return;
     }
     try {
-      // Replace with your backend API endpoint
-      const res = await fetch("/api/register", {
+      const res = await fetch(`${API_URL}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),

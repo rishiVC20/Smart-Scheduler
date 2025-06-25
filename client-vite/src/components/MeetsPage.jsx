@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { getToken } from '../utils/auth';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const MeetsPage = ({ user }) => {
   const [meetings, setMeetings] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -20,7 +22,7 @@ const MeetsPage = ({ user }) => {
 
   const fetchMeetings = async () => {
     try {
-      const res = await fetch('/api/meetings', {
+      const res = await fetch(`${API_URL}/meetings`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -32,7 +34,7 @@ const MeetsPage = ({ user }) => {
 
   const fetchPendingCount = async () => {
     try {
-      const res = await fetch('/api/meetings/notifications', {
+      const res = await fetch(`${API_URL}/meetings/notifications`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -115,14 +117,14 @@ const MeetsPage = ({ user }) => {
 
     try {
       // First, clear any existing timings for this user on this meeting
-      await fetch(`/api/meetings/${meetingId}/clear-timings`, {
+      await fetch(`${API_URL}/meetings/${meetingId}/clear-timings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
       });
       
       // Then, submit all new timings
       for (const timing of validTimings) {
-        await fetch(`/api/meetings/${meetingId}/respond`, {
+        await fetch(`${API_URL}/meetings/${meetingId}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ start: new Date(timing.start), end: new Date(timing.end) }),
@@ -144,7 +146,7 @@ const MeetsPage = ({ user }) => {
     setSelectedMeeting(meeting);
     setLoadingSuggest(prev => ({ ...prev, [meeting._id]: true }));
     try {
-      const res = await fetch(`/api/meetings/${meeting._id}/suggest-times`, {
+      const res = await fetch(`${API_URL}/meetings/${meeting._id}/suggest-times`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -162,7 +164,7 @@ const MeetsPage = ({ user }) => {
     setScheduling(prev => ({ ...prev, [meeting._id]: true }));
     try {
         const participants = [meeting.host, ...meeting.invitees].filter(p => slot.participants.some(sp => sp._id === p._id));
-        const res = await fetch(`/api/meetings/${meeting._id}/schedule-gmeet`, {
+        const res = await fetch(`${API_URL}/meetings/${meeting._id}/schedule-gmeet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
             body: JSON.stringify({ start: slot.start, end: slot.end, participants }),
