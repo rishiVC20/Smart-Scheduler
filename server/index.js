@@ -15,10 +15,11 @@ const PORT = process.env.PORT || 5000;
 const TOKEN_PATH = path.join(__dirname, 'token.json');
 
 app.use(cors({
-  origin: true,
+  origin: "https://smart-scheduler1.netlify.app",
   credentials: true,
   exposedHeaders: ['Authorization']
 }));
+
 app.use(express.json());
 
 mongoose.connect(process.env.MONGO_URI, {
