@@ -51,7 +51,11 @@ const MeetsPage = ({ user }) => {
   
   const isHost = (meeting) => String(meeting.host._id) === String(user._id);
   const isInvitee = (meeting) => meeting.invitees.some(i => String(i._id) === String(user._id));
-  const getInviteeResponse = (meeting) => meeting.inviteeResponses.find(r => String(r.user._id) === String(user._id));
+  const getInviteeResponse = (meeting) => meeting.inviteeResponses.find(r => {
+    if (!r.user) return false;
+    if (typeof r.user === 'object' && r.user._id) return String(r.user._id) === String(user._id);
+    return String(r.user) === String(user._id);
+  });
 
   // --- Date & Time Formatting (with fix for "Invalid Date") ---
   const formatDate = (dateString) => {

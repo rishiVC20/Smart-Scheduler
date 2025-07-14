@@ -12,7 +12,7 @@ const getDaysInMonth = (date) => {
   const startingDayOfWeek = firstDay.getDay();
 
   const days = [];
-  
+    
   // Add empty cells for days before the first day of the month
   for (let i = 0; i < startingDayOfWeek; i++) {
     days.push(null);
@@ -37,7 +37,8 @@ const getTimeSlots = () => {
 const API_URL = import.meta.env.VITE_API_URL;
 
 const Calendar = ({ user }) => {
-  const [view, setView] = useState('month'); // 'month' or 'day'
+  //month la blue karu when clicked->initially keep it month
+  const [view, setView] = useState('month'); // 'month' or '`day'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -262,6 +263,7 @@ const Calendar = ({ user }) => {
           </button>
         </div>
       </div>
+      
 
       {/* Navigation */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">

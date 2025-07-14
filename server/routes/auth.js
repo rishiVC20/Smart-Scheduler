@@ -97,7 +97,7 @@ router.get('/search-users', authMiddleware, async (req, res) => {
     const users = await User.find({
       email: { $regex: email, $options: 'i' },
       _id: { $ne: me._id }
-    }).select('name email').lean(); // Use .lean() for plain JS objects to add properties
+    }).select('name email').lean(); // .lean() for plain JS objects to add properties
 
     // Add a 'status' field to each user based on their relationship with the current user
     const usersWithStatus = users.map(user => {
@@ -253,24 +253,28 @@ router.get('/meetings', authMiddleware, async (req, res) => {
     // Step 2: Manually process each meeting to ensure correct counts and data
     const finalMeetings = await Promise.all(
       meetings.map(async (meeting) => {
+        // Patch: Ensure all inviteeResponses have a user object (not just id)
+        if (Array.isArray(meeting.inviteeResponses)) {
+          for (let resp of meeting.inviteeResponses) {
+            if (resp.user && typeof resp.user === 'string') {
+              // Populate user object if missing
+              const userObj = await User.findById(resp.user).select('name email _id').lean();
+              if (userObj) resp.user = userObj;
+            }
+          }
+        }
         // Create a new Set of user IDs who have submitted valid timings.
-        // This is the most reliable way to count unique responders.
         const usersWhoResponded = new Set(
           (meeting.inviteeResponses || [])
             .filter(response => response.user && response.timings && response.timings.length > 0)
-            .map(response => response.user._id.toString())
+            .map(response => (response.user._id ? response.user._id.toString() : response.user.toString()))
         );
-
-        // Add the accurate count to the meeting object
         meeting.submittedCount = usersWhoResponded.size;
-
-        // Manually re-populate confirmed participants for finalized meetings
         if (meeting.finalizedSlot && meeting.finalizedSlot.confirmedParticipants?.length > 0) {
           meeting.finalizedSlot.confirmedParticipants = await User.find({
             _id: { $in: meeting.finalizedSlot.confirmedParticipants }
           }).select('name email _id').lean();
         }
-        
         return meeting;
       })
     );
@@ -433,6 +437,29 @@ router.get('/meetings/:id/suggest-times', authMiddleware, async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// Clear all timings for the current user for a meeting
+router.post('/meetings/:id/clear-timings', authMiddleware, async (req, res) => {
+  try {
+    const meeting = await Meeting.findById(req.params.id);
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    // Only invited friends can clear timings
+    if (!meeting.invitees.map(id => id.toString()).includes(req.user.id)) {
+      return res.status(403).json({ message: 'Not invited' });
+    }
+    // Find invitee response
+    let response = meeting.inviteeResponses.find(r => r.user.toString() === req.user.id);
+    if (response) {
+      response.timings = [];
+      await meeting.save();
+      return res.json({ message: 'Timings cleared' });
+    } else {
+      return res.json({ message: 'No timings to clear' });
+    }
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
