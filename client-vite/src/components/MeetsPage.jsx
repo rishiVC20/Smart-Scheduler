@@ -119,6 +119,21 @@ const MeetsPage = ({ user }) => {
       return;
     }
 
+    // Frontend validation: ensure each slot is at least the required duration
+    const duration = selectedMeetingForTiming.duration;
+    for (const timing of validTimings) {
+      // Assume timing.start and timing.end are in 'HH:mm' format
+      const [startHour, startMinute] = timing.start.split(":").map(Number);
+      const [endHour, endMinute] = timing.end.split(":").map(Number);
+      const startMins = startHour * 60 + startMinute;
+      const endMins = endHour * 60 + endMinute;
+      if (endMins - startMins < duration) {
+        toast.error(`Each slot must be at least ${duration} minutes.`);
+        setSubmitting(prev => ({ ...prev, [meetingId]: false }));
+        return;
+      }
+    }
+
     try {
       // First, clear any existing timings for this user on this meeting
       await fetch(`${API_URL}/meetings/${meetingId}/clear-timings`, {
@@ -128,10 +143,14 @@ const MeetsPage = ({ user }) => {
       
       // Then, submit all new timings
       for (const timing of validTimings) {
+        // Convert to ISO date strings for backend
+        const meetingDate = selectedMeetingForTiming.meetingDate || new Date().toISOString().split('T')[0];
+        const startISO = new Date(`${meetingDate}T${timing.start}`).toISOString();
+        const endISO = new Date(`${meetingDate}T${timing.end}`).toISOString();
         await fetch(`${API_URL}/meetings/${meetingId}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify({ start: new Date(timing.start), end: new Date(timing.end) }),
+          body: JSON.stringify({ start: startISO, end: endISO }),
         });
       }
       toast.success('Your availability has been submitted!');

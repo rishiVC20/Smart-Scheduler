@@ -287,32 +287,58 @@ router.get('/meetings', authMiddleware, async (req, res) => {
   }
 });
 
-// Invitee submits a timing (one at a time, no edit)
+// Invitee submits a timing (replace all previous timings for this user)
 router.post('/meetings/:id/respond', authMiddleware, async (req, res) => {
   try {
     const { start, end } = req.body;
     const meeting = await Meeting.findById(req.params.id);
-    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    if (!meeting) {
+      console.error('Meeting not found for ID:', req.params.id);
+      return res.status(404).json({ message: 'Meeting not found' });
+    }
+    console.log('Meeting found:', meeting._id.toString());
+    console.log('Invitees:', meeting.invitees.map(i => i.toString()));
+    console.log('Current user:', req.user.id);
     // Only invited friends can respond
-    if (!meeting.invitees.map(id => id.toString()).includes(req.user.id)) {
+    const isInvitee = meeting.invitees.map(id => id.toString()).includes(req.user.id.toString());
+    if (!isInvitee) {
+      console.error('User is not an invitee:', req.user.id);
       return res.status(403).json({ message: 'Not invited' });
     }
     // Validate duration
     const durationMs = meeting.duration * 60 * 1000;
     if (new Date(end) - new Date(start) < durationMs) {
+      console.error('Timing too short:', { start, end, duration: meeting.duration });
       return res.status(400).json({ message: 'Timing must be at least the meeting duration' });
     }
     // Find or create invitee response
-    let response = meeting.inviteeResponses.find(r => r.user.toString() === req.user.id);
+    let response = meeting.inviteeResponses.find(r => r.user.toString() === req.user.id.toString());
     if (!response) {
       response = { user: req.user.id, timings: [] };
       meeting.inviteeResponses.push(response);
+      console.log('Created new inviteeResponse for user:', req.user.id);
+    } else {
+      console.log('Found existing inviteeResponse for user:', req.user.id);
     }
-    // No edit, only add
-    response.timings.push({ start, end });
+    // Replace timings with the new one
+    response.timings = [{ start, end }];
     await meeting.save();
+    console.log('Saved meeting with updated timings for user:', req.user.id);
+
+    // Check if all invitees have submitted timings
+    const allSubmitted = meeting.invitees.every(inviteeId => {
+      const resp = meeting.inviteeResponses.find(r => r.user.toString() === inviteeId.toString());
+      return resp && resp.timings && resp.timings.length > 0;
+    });
+    if (allSubmitted) {
+      meeting.status = 'awaiting_selection';
+      await meeting.save();
+      console.log('All invitees submitted. Status updated to awaiting_selection.');
+    }
+
     res.json({ message: 'Timing submitted' });
   } catch (err) {
+    console.error('Error in /meetings/:id/respond:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
