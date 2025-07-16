@@ -208,14 +208,12 @@ const MeetsPage = ({ user }) => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-full mx-auto">
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6 flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-800">Meetings</h1>
-            {pendingCount > 0 && (
-                <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium animate-pulse">
-                    {pendingCount} pending response{pendingCount > 1 ? 's' : ''}
-                </div>
-            )}
-        </div>
+        {/* Pending count notification (unchanged) */}
+        {pendingCount > 0 && (
+          <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium animate-pulse mb-4 w-fit">
+            {pendingCount} pending response{pendingCount > 1 ? 's' : ''}
+          </div>
+        )}
 
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">

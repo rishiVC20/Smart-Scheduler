@@ -290,17 +290,20 @@ const Dashboard = ({ user }) => {
 
   return (
     <div className="w-full min-h-screen bg-white rounded shadow flex flex-col gap-6 px-2 sm:px-8 py-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="text-left">
-          <h2 className="text-2xl font-bold text-blue-700 mb-1">Meetings Dashboard</h2>
-          <p className="text-gray-600 text-sm max-w-xs">Schedule, view, and manage your meetings with friends. Stay organized and never miss a call!</p>
+          <h2 className="text-4xl font-extrabold text-green-700 mb-2">Meetings Dashboard</h2>
+          <p className="text-lg text-gray-700 max-w-2xl">
+            Effortlessly schedule, view, and manage your meetings with friends. Stay organized, collaborate seamlessly, and never miss a call—your smart scheduling assistant is here!
+          </p>
         </div>
         <button
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded shadow transition w-full sm:w-auto justify-center text-lg"
+          className="flex items-center gap-2 px-7 py-3 bg-blue-600 text-white text-lg font-semibold rounded-xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-blue-300"
           onClick={() => setShowModal(true)}
           type="button"
+          style={{ boxShadow: '0 8px 24px 0 rgba(37, 99, 235, 0.15)' }}
         >
-          <FaPlus className="text-xl" />
+          <FaPlus className="text-2xl" />
           <span>Schedule Meeting</span>
         </button>
       </div>
