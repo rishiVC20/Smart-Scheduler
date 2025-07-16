@@ -60,12 +60,14 @@ function Navbar({ user, onLogout, connections, meetsCount }) {
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row gap-4 sm:gap-0 sm:space-x-4">
-            <button 
-              onClick={scrollToHowItWorks}
-              className="text-white font-medium hover:text-green-200 transition"
-            >
-              How It Works
-            </button>
+            {!(location.pathname === "/register" || location.pathname === "/login") && (
+              <button 
+                onClick={scrollToHowItWorks}
+                className="text-white font-medium hover:text-green-200 transition"
+              >
+                How It Works
+              </button>
+            )}
             <Link to="/register" className="text-white font-medium hover:text-green-200 transition">Register</Link>
             <Link to="/login" className="text-white font-medium hover:text-green-200 transition">Login</Link>
           </div>
