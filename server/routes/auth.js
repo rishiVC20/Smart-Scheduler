@@ -287,7 +287,7 @@ router.get('/meetings', authMiddleware, async (req, res) => {
   }
 });
 
-// Invitee submits a timing (replace all previous timings for this user)
+// Invitee submits a timing (add to existing timings for this user)
 router.post('/meetings/:id/respond', authMiddleware, async (req, res) => {
   try {
     const { start, end } = req.body;
@@ -320,10 +320,10 @@ router.post('/meetings/:id/respond', authMiddleware, async (req, res) => {
     } else {
       console.log('Found existing inviteeResponse for user:', req.user.id);
     }
-    // Replace timings with the new one
-    response.timings = [{ start, end }];
+    // Add the new timing to existing timings (don't replace)
+    response.timings.push({ start, end });
     await meeting.save();
-    console.log('Saved meeting with updated timings for user:', req.user.id);
+    console.log('Saved meeting with added timing for user:', req.user.id);
 
     // Check if all invitees have submitted timings
     const allSubmitted = meeting.invitees.every(inviteeId => {
@@ -339,6 +339,34 @@ router.post('/meetings/:id/respond', authMiddleware, async (req, res) => {
     res.json({ message: 'Timing submitted' });
   } catch (err) {
     console.error('Error in /meetings/:id/respond:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get detailed responses for a specific meeting (for hosts)
+router.get('/meetings/:id/responses', authMiddleware, async (req, res) => {
+  try {
+    const meeting = await Meeting.findById(req.params.id)
+      .populate('host', 'name email')
+      .populate('invitees', 'name email')
+      .populate({
+        path: 'inviteeResponses.user',
+        select: 'name email'
+      })
+      .lean();
+    
+    if (!meeting) {
+      return res.status(404).json({ message: 'Meeting not found' });
+    }
+    
+    // Only the host can view detailed responses
+    if (meeting.host._id.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only host can view responses' });
+    }
+    
+    res.json(meeting);
+  } catch (err) {
+    console.error('Error in /meetings/:id/responses:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -466,6 +494,68 @@ router.get('/meetings/:id/suggest-times', authMiddleware, async (req, res) => {
   }
 });
 
+// Submit multiple timings for the current user for a meeting
+router.post('/meetings/:id/submit-timings', authMiddleware, async (req, res) => {
+  try {
+    const { timings } = req.body; // timings: [{start, end}, ...]
+    console.log('Received timings:', timings);
+    
+    const meeting = await Meeting.findById(req.params.id);
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    
+    // Only invited friends can submit timings
+    if (!meeting.invitees.map(id => id.toString()).includes(req.user.id)) {
+      return res.status(403).json({ message: 'Not invited' });
+    }
+    
+    // Validate timings
+    const durationMs = meeting.duration * 60 * 1000;
+    for (const timing of timings) {
+      const startDate = new Date(timing.start);
+      const endDate = new Date(timing.end);
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ 
+          message: 'Invalid date format in timings' 
+        });
+      }
+      
+      if (endDate - startDate < durationMs) {
+        return res.status(400).json({ 
+          message: `Timing must be at least ${meeting.duration} minutes` 
+        });
+      }
+    }
+    
+    // Find or create invitee response
+    let response = meeting.inviteeResponses.find(r => r.user.toString() === req.user.id.toString());
+    if (!response) {
+      response = { user: req.user.id, timings: [] };
+      meeting.inviteeResponses.push(response);
+    }
+    
+    // Replace all timings with the new ones
+    response.timings = timings;
+    console.log('Saving meeting with responses:', meeting.inviteeResponses);
+    await meeting.save();
+    
+    // Check if all invitees have submitted timings
+    const allSubmitted = meeting.invitees.every(inviteeId => {
+      const resp = meeting.inviteeResponses.find(r => r.user.toString() === inviteeId.toString());
+      return resp && resp.timings && resp.timings.length > 0;
+    });
+    if (allSubmitted) {
+      meeting.status = 'awaiting_selection';
+      await meeting.save();
+    }
+    
+    res.json({ message: 'Timings submitted successfully' });
+  } catch (err) {
+    console.error('Error in /meetings/:id/submit-timings:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 // Clear all timings for the current user for a meeting
 router.post('/meetings/:id/clear-timings', authMiddleware, async (req, res) => {
   try {
@@ -493,39 +583,139 @@ function getOAuth2Client() {
   console.log('Current working directory:', process.cwd());
   console.log('Looking for credentials at:', CREDENTIALS_PATH);
   console.log('File exists:', fs.existsSync(CREDENTIALS_PATH));
+  
+  if (!fs.existsSync(CREDENTIALS_PATH)) {
+    throw new Error('Google credentials file not found. Please add credentials.json to the server directory.');
+  }
+  
   const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
   const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
   const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+  
   if (fs.existsSync(TOKEN_PATH)) {
-    oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH)));
+    try {
+      const token = JSON.parse(fs.readFileSync(TOKEN_PATH));
+      oAuth2Client.setCredentials(token);
+    } catch (error) {
+      console.error('Error loading token:', error);
+      // If token is invalid, remove it
+      if (fs.existsSync(TOKEN_PATH)) {
+        fs.unlinkSync(TOKEN_PATH);
+      }
+    }
   }
+  
   return oAuth2Client;
 }
+
+// Check OAuth status
+router.get('/oauth-status', authMiddleware, async (req, res) => {
+  try {
+    const hasCredentials = fs.existsSync(CREDENTIALS_PATH);
+    const hasToken = fs.existsSync(TOKEN_PATH);
+    
+    if (!hasCredentials) {
+      return res.json({ 
+        status: 'no_credentials',
+        message: 'Google Calendar credentials not configured'
+      });
+    }
+    
+    if (!hasToken) {
+      return res.json({ 
+        status: 'no_token',
+        message: 'Google Calendar not authorized'
+      });
+    }
+    
+    // Try to validate the token
+    try {
+      const oAuth2Client = getOAuth2Client();
+      // This will throw an error if token is invalid
+      await oAuth2Client.getAccessToken();
+      return res.json({ 
+        status: 'authorized',
+        message: 'Google Calendar authorized and ready'
+      });
+    } catch (error) {
+      // Remove invalid token
+      if (fs.existsSync(TOKEN_PATH)) {
+        fs.unlinkSync(TOKEN_PATH);
+      }
+      return res.json({ 
+        status: 'invalid_token',
+        message: 'Google Calendar token expired or invalid'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'error',
+      message: 'Error checking OAuth status',
+      error: error.message 
+    });
+  }
+});
 
 // OAuth2 callback route (visit this URL in browser to authorize)
 router.get('/oauth2callback', async (req, res) => {
   const code = req.query.code;
-  const oAuth2Client = getOAuth2Client();
+  
   if (!code) {
-    return res.status(400).send('No code provided');
+    return res.status(400).send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+          <h2>Authorization Error</h2>
+          <p>No authorization code provided.</p>
+          <p>Please try scheduling again from the main application.</p>
+        </body>
+      </html>
+    `);
   }
+  
   try {
+    const oAuth2Client = getOAuth2Client();
     const { tokens } = await oAuth2Client.getToken(code);
     oAuth2Client.setCredentials(tokens);
     fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-    res.send('Google Calendar authorization successful! You can close this tab.');
+    
+    res.send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+          <h2 style="color: green;">✅ Authorization Successful!</h2>
+          <p>Google Calendar access has been granted.</p>
+          <p>You can now close this tab and return to the main application.</p>
+          <p>Try scheduling your meeting again.</p>
+        </body>
+      </html>
+    `);
   } catch (err) {
-    res.status(500).send('Error retrieving access token: ' + err.message);
+    console.error('OAuth callback error:', err);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;">
+          <h2 style="color: red;">❌ Authorization Failed</h2>
+          <p>Error: ${err.message}</p>
+          <p>Please try again or contact support.</p>
+        </body>
+      </html>
+    `);
   }
 });
+
+
 
 // Schedule a GMeet for a meeting slot
 router.post('/meetings/:id/schedule-gmeet', authMiddleware, async (req, res) => {
   try {
+    console.log('Schedule request body:', req.body);
+    
     const meeting = await Meeting.findById(req.params.id).populate('host').populate('invitees');
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
     if (meeting.host._id.toString() !== req.user.id) return res.status(403).json({ message: 'Only host can schedule' });
+    
     let { start, end, participants } = req.body; // participants: [{name, email, _id}]
+    console.log('Extracted data:', { start, end, participants });
+    
     if (!start || !end || !participants || participants.length === 0) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
@@ -541,8 +731,17 @@ router.post('/meetings/:id/schedule-gmeet', authMiddleware, async (req, res) => 
       const id = await getId(p);
       if (id) confirmedParticipants.push(id);
     }
+    // Check if credentials file exists
+    if (!fs.existsSync(CREDENTIALS_PATH)) {
+      return res.status(500).json({ 
+        message: 'Google Calendar integration not configured. Please contact administrator.',
+        error: 'Missing credentials.json file'
+      });
+    }
+    
     const oAuth2Client = getOAuth2Client();
     const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
+    
     // Create event
     const event = {
       summary: meeting.title,
@@ -557,6 +756,9 @@ router.post('/meetings/:id/schedule-gmeet', authMiddleware, async (req, res) => 
         }
       },
     };
+    
+    console.log('Creating Google Calendar event:', event);
+    
     const response = await calendar.events.insert({
       calendarId: 'primary',
       resource: event,
@@ -598,12 +800,45 @@ router.post('/meetings/:id/schedule-gmeet', authMiddleware, async (req, res) => 
     res.json({ meetLink, event: response.data, scheduled });
   } catch (err) {
     console.error('Error in /api/meetings/:id/schedule-gmeet:', err, err?.stack);
-    if (err.code === 401) {
-      // Not authorized, prompt for OAuth
-      const oAuth2Client = getOAuth2Client();
-      const authUrl = oAuth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
-      return res.status(401).json({ message: 'Google authorization required', authUrl });
+    
+    // Handle OAuth errors
+    if (err.code === 401 || err.code === 400) {
+      try {
+        // Remove invalid token
+        if (fs.existsSync(TOKEN_PATH)) {
+          fs.unlinkSync(TOKEN_PATH);
+        }
+        
+        // Generate new auth URL
+        const oAuth2Client = getOAuth2Client();
+        const authUrl = oAuth2Client.generateAuthUrl({ 
+          access_type: 'offline', 
+          scope: SCOPES,
+          prompt: 'consent' // Force consent to get refresh token
+        });
+        
+        return res.status(401).json({ 
+          message: 'Google authorization required. Please authorize the application.', 
+          authUrl,
+          error: err.message 
+        });
+      } catch (authError) {
+        console.error('Error generating auth URL:', authError);
+        return res.status(500).json({ 
+          message: 'Google Calendar integration error. Please try the test scheduling option.',
+          error: authError.message 
+        });
+      }
     }
+    
+    // Handle missing credentials
+    if (err.message && err.message.includes('credentials file not found')) {
+      return res.status(500).json({ 
+        message: 'Google Calendar integration not configured. Please follow the setup guide in GOOGLE_CALENDAR_SETUP.md',
+        error: err.message 
+      });
+    }
+    
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

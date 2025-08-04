@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { getToken } from '../utils/auth';
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+console.log('API_URL:', API_URL);
 
 const MeetsPage = ({ user }) => {
   const [meetings, setMeetings] = useState([]);
@@ -14,6 +15,8 @@ const MeetsPage = ({ user }) => {
   const [showSuggestPopup, setShowSuggestPopup] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [suggested, setSuggested] = useState({});
+  const [showResponsesPopup, setShowResponsesPopup] = useState(false);
+  const [selectedMeetingResponses, setSelectedMeetingResponses] = useState(null);
 
   // States for the new timing submission popup
   const [showTimingPopup, setShowTimingPopup] = useState(false);
@@ -57,6 +60,12 @@ const MeetsPage = ({ user }) => {
     return String(r.user) === String(user._id);
   });
 
+  const formatTimingForDisplay = (timing) => {
+    const start = new Date(timing.start);
+    const end = new Date(timing.end);
+    return `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} - ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  };
+
   // --- Date & Time Formatting (with fix for "Invalid Date") ---
   const formatDate = (dateString) => {
     if (!dateString || new Date(dateString).toString() === 'Invalid Date') {
@@ -95,7 +104,23 @@ const MeetsPage = ({ user }) => {
   // --- Timing Submission Popup Logic ---
   const openTimingPopup = (meeting) => {
     setSelectedMeetingForTiming(meeting);
-    setMultipleTimings([{ start: '', end: '' }]);
+    
+    // Check if user has existing timings
+    const existingResponse = getInviteeResponse(meeting);
+    if (existingResponse && existingResponse.timings && existingResponse.timings.length > 0) {
+      // Convert existing timings to HH:mm format for the form
+      const existingTimings = existingResponse.timings.map(timing => {
+        const start = new Date(timing.start);
+        const end = new Date(timing.end);
+        return {
+          start: `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`,
+          end: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`
+        };
+      });
+      setMultipleTimings(existingTimings);
+    } else {
+      setMultipleTimings([{ start: '', end: '' }]);
+    }
     setShowTimingPopup(true);
   };
 
@@ -135,30 +160,33 @@ const MeetsPage = ({ user }) => {
     }
 
     try {
-      // First, clear any existing timings for this user on this meeting
-      await fetch(`${API_URL}/meetings/${meetingId}/clear-timings`, {
+      // Convert all timings to ISO date strings for backend
+      const meetingDate = selectedMeetingForTiming.meetingDate || new Date().toISOString().split('T')[0];
+      const timingsForBackend = validTimings.map(timing => ({
+        start: new Date(`${meetingDate}T${timing.start}`).toISOString(),
+        end: new Date(`${meetingDate}T${timing.end}`).toISOString()
+      }));
+      
+      console.log('Sending timings to backend:', timingsForBackend);
+      
+      // Submit all timings at once using the new endpoint
+      const response = await fetch(`${API_URL}/meetings/${meetingId}/submit-timings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ timings: timingsForBackend }),
       });
       
-      // Then, submit all new timings
-      for (const timing of validTimings) {
-        // Convert to ISO date strings for backend
-        const meetingDate = selectedMeetingForTiming.meetingDate || new Date().toISOString().split('T')[0];
-        const startISO = new Date(`${meetingDate}T${timing.start}`).toISOString();
-        const endISO = new Date(`${meetingDate}T${timing.end}`).toISOString();
-        await fetch(`${API_URL}/meetings/${meetingId}/respond`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-          body: JSON.stringify({ start: startISO, end: endISO }),
-        });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to submit timings');
       }
+      
       toast.success('Your availability has been submitted!');
       setShowTimingPopup(false);
       fetchMeetings();
       fetchPendingCount();
     } catch (error) {
-      toast.error('An error occurred while submitting.');
+      toast.error(error.message || 'An error occurred while submitting.');
     } finally {
       setSubmitting(prev => ({ ...prev, [meetingId]: false }));
     }
@@ -182,24 +210,65 @@ const MeetsPage = ({ user }) => {
     }
   };
   
+  // --- View Responses Logic ---
+  const handleViewResponses = async (meeting) => {
+    try {
+      const res = await fetch(`${API_URL}/meetings/${meeting._id}/responses`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch responses');
+      const data = await res.json();
+      setSelectedMeetingResponses(data);
+      setShowResponsesPopup(true);
+    } catch (error) {
+      toast.error('Failed to fetch responses');
+    }
+  };
+
   // --- Schedule Meet Logic ---
+
+
   const handleScheduleMeet = async (meeting, slot) => {
     setScheduling(prev => ({ ...prev, [meeting._id]: true }));
     try {
+        console.log('Scheduling meeting:', meeting._id);
+        console.log('Slot data:', slot);
+        
         const participants = [meeting.host, ...meeting.invitees].filter(p => slot.participants.some(sp => sp._id === p._id));
+        console.log('Participants:', participants);
+        
+        const requestBody = { start: slot.start, end: slot.end, participants };
+        console.log('Request body:', requestBody);
+        
         const res = await fetch(`${API_URL}/meetings/${meeting._id}/schedule-gmeet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-            body: JSON.stringify({ start: slot.start, end: slot.end, participants }),
+            body: JSON.stringify(requestBody),
         });
+        
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to schedule.');
+        console.log('Response status:', res.status);
+        console.log('Response data:', data);
+        
+        if (!res.ok) {
+          if (data.message && data.message.includes('Google authorization required') && data.authUrl) {
+            // Open Google OAuth in new window
+            window.open(data.authUrl, '_blank', 'width=500,height=600');
+            toast.info('Please authorize Google Calendar access in the new window, then try scheduling again.');
+          } else if (data.message && data.message.includes('not configured')) {
+            toast.error('Google Calendar integration not configured. Please follow the setup guide.');
+          } else {
+            throw new Error(data.message || data.error || 'Failed to schedule.');
+          }
+          return;
+        }
         
         toast.success('Meeting scheduled successfully!');
         setShowSuggestPopup(false);
         fetchMeetings();
     } catch (err) {
-        toast.error(err.message || 'Failed to schedule meet.');
+        console.error('Scheduling error:', err);
+        toast.error(err.message || 'Failed to schedule meeting.');
     } finally {
         setScheduling(prev => ({ ...prev, [meeting._id]: false }));
     }
@@ -261,18 +330,27 @@ const MeetsPage = ({ user }) => {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-2 items-start">
                           {isHost(meeting) && getMeetingStatus(meeting) !== 'Finalized' &&(
-                            <button
-                              onClick={() => handleSuggestTimes(meeting)}
-                              className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition disabled:opacity-50"
-                              disabled={loadingSuggest[meeting._id] || meeting.submittedCount < meeting.invitees.length}
-                              title={meeting.submittedCount < meeting.invitees.length ? 'Waiting for all participants to respond' : 'Suggest meeting times'}
-                            >
-                              {loadingSuggest[meeting._id] ? 'Loading...' : 'Suggest Times'}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleSuggestTimes(meeting)}
+                                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition disabled:opacity-50"
+                                disabled={loadingSuggest[meeting._id] || meeting.submittedCount < meeting.invitees.length}
+                                title={meeting.submittedCount < meeting.invitees.length ? 'Waiting for all participants to respond' : 'Suggest meeting times'}
+                              >
+                                {loadingSuggest[meeting._id] ? 'Loading...' : 'Suggest Times'}
+                              </button>
+                              <button
+                                onClick={() => handleViewResponses(meeting)}
+                                className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700 transition"
+                                title="View all responses"
+                              >
+                                View Responses
+                              </button>
+                            </>
                           )}
-                          {isInvitee(meeting) && !getInviteeResponse(meeting) && getMeetingStatus(meeting) === 'Pending Input' && (
+                          {isInvitee(meeting) && getMeetingStatus(meeting) === 'Pending Input' && (
                             <button onClick={() => openTimingPopup(meeting)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition">
-                              Submit Timings
+                              {getInviteeResponse(meeting) ? 'Edit Timings' : 'Submit Timings'}
                             </button>
                           )}
                           {meeting.finalizedSlot?.start && meeting.meetLink &&(
@@ -281,7 +359,14 @@ const MeetsPage = ({ user }) => {
                             </a>
                           )}
                           {isInvitee(meeting) && getInviteeResponse(meeting) && (
-                            <span className="text-xs text-green-600 font-medium">✓ Response Submitted</span>
+                            <div className="text-xs text-green-600 font-medium">
+                              <div>✓ Response Submitted</div>
+                              {getInviteeResponse(meeting).timings && getInviteeResponse(meeting).timings.length > 0 && (
+                                <div className="text-xs text-gray-600 mt-1">
+                                  {getInviteeResponse(meeting).timings.length} time slot{getInviteeResponse(meeting).timings.length > 1 ? 's' : ''}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -423,6 +508,56 @@ const MeetsPage = ({ user }) => {
                     <button onClick={() => setShowSuggestPopup(false)} className="px-4 py-2 border rounded-md">Close</button>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* View Responses Popup */}
+      {showResponsesPopup && selectedMeetingResponses && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Responses for "{selectedMeetingResponses.title}"</h3>
+            <div className="space-y-4">
+              {selectedMeetingResponses.invitees.map(invitee => {
+                const response = selectedMeetingResponses.inviteeResponses.find(r => 
+                  r.user && (r.user._id === invitee._id || r.user === invitee._id)
+                );
+                return (
+                  <div key={invitee._id} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{invitee.name}</h4>
+                        <p className="text-sm text-gray-600">{invitee.email}</p>
+                      </div>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        response && response.timings && response.timings.length > 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {response && response.timings && response.timings.length > 0 ? 'Responded' : 'No Response'}
+                      </span>
+                    </div>
+                    {response && response.timings && response.timings.length > 0 ? (
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-gray-700 mb-1">Submitted time slots:</p>
+                        <div className="space-y-1">
+                          {response.timings.map((timing, index) => (
+                            <div key={index} className="text-sm text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                              {formatTimingForDisplay(timing)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No time slots submitted yet.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-end mt-6">
+              <button onClick={() => setShowResponsesPopup(false)} className="px-4 py-2 border rounded-md">Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
